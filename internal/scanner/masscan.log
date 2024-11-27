@@ -1,0 +1,13 @@
+masscan 47.93.190.244/28 -p8080 --rate 1000 -oJ - --wait 0
+Starting masscan 1.3.2 (http://bit.ly/14GZzcT) at 2024-11-27 09:25:27 GMT
+Initiating SYN Stealth Scan
+Scanning 16 hosts [1 port/host]
+[
+{   "ip": "47.93.190.245",   "timestamp": "1732699527", "ports": [ {"port": 8080, "proto": "tcp", "status": "open", "reason": "syn-ack", "ttl": 52} ] }
+,ate:  0.00-kpps,  6.25% done,3515:30:34 remaining, found=1
+{   "ip": "47.93.190.244",   "timestamp": "1732699527", "ports": [ {"port": 8080, "proto": "tcp", "status": "open", "reason": "syn-ack", "ttl": 51} ] }
+,
+{   "ip": "47.93.190.241",   "timestamp": "1732699527", "ports": [ {"port": 8080, "proto": "tcp", "status": "open", "reason": "syn-ack", "ttl": 52} ] }
+,
+{   "ip": "47.93.190.249",   "timestamp": "1732699527", "ports": [ {"port": 8080, "proto": "tcp", "status": "open", "reason": "syn-ack", "ttl": 53} ] }
+]ate:  0.00-kpps, 100.00% done, waiting 0-secs, found=4
