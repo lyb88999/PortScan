@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/lyb88999/PortScan/internal/models"
-	"github.com/redis/go-redis/v9"
 	"io"
 	"log"
 	"os/exec"
@@ -15,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/lyb88999/PortScan/internal/models"
+	"github.com/redis/go-redis/v9"
 )
 
 const scannerName = "masscan"
