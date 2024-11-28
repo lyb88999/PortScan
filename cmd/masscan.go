@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/lyb88999/PortScan/internal/config"
 	"github.com/lyb88999/PortScan/internal/kafka"
 	"github.com/lyb88999/PortScan/internal/models"
@@ -59,9 +61,11 @@ func init() {
 	masscanCmd.Flags().IntVar(&port, "port", 0, "端口号")
 	masscanCmd.Flags().IntVar(&bandwidth, "bandwidth", 1000, "带宽")
 	var err error
-	cfg, err = config.LoadConfig("../..")
+	// cfg, err = config.LoadConfig("../..")
+	cfg, err = config.LoadConfigFromExecutable()
 	if err != nil {
 		fmt.Println("failed to load config: ", err)
+		os.Exit(-1)
 	}
 
 	// Here you will define your flags and configuration settings.
