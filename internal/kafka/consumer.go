@@ -33,17 +33,19 @@ func (cg *ConsumerGroup) Cleanup(session sarama.ConsumerGroupSession) error {
 func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	// 获取一个Redis实例
 	rdb := rds.GetRedisClient(cg.cfg)
-	var ms = scanner.NewMasscanScanner(rdb)
+	// 创建masscan扫描器
+	var ps = scanner.NewMasscanScanner(rdb)
+	// 创建生产者
 	p, err := NewSyncProducer([]string{cg.cfg.KafkaHost}, cg.processedTopic)
+	if err != nil {
+		return fmt.Errorf("failed to new sync producer: %s", err)
+	}
 	defer func() {
 		err = p.Close()
 		if err != nil {
 			fmt.Printf("failed to close sync producer: %s", err)
 		}
 	}()
-	if err != nil {
-		return fmt.Errorf("failed to new sync producer: %s", err)
-	}
 	for msg := range claim.Messages() {
 		fmt.Printf("[consumer] topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		// 标记消息已被消费 内部会更新 consumer offset
@@ -58,7 +60,7 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			Port:      data.Port,
 			BandWidth: strconv.Itoa(data.Bandwidth),
 		}
-		scanResult, err := ms.Scan(scanOptions)
+		scanResult, err := ps.Scan(scanOptions)
 		if err != nil {
 			return fmt.Errorf("failed to use masscan to do port scan: %s", err)
 		}
@@ -96,17 +98,18 @@ func NewConsumerGroup(brokers []string, groupID string, rawTopic string, process
 
 func (cg *ConsumerGroup) Consume(ctx context.Context) error {
 	for {
-		if err := cg.consumerGroup.Consume(ctx, []string{cg.rawTopic}, cg); err != nil {
-			return fmt.Errorf("error from consumer: %v", err)
-		}
-		// 检查上下文是否已取消
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		// 重新启动消费者组
-		err := cg.consumerGroup.Close()
-		if err != nil {
-			return err
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			err := cg.consumerGroup.Consume(ctx, []string{cg.rawTopic}, cg)
+			if err != nil {
+				if err == sarama.ErrClosedConsumerGroup {
+					return nil
+				}
+				fmt.Printf("Error from consumer: %v, will retry...", err)
+				continue
+			}
 		}
 	}
 }

@@ -23,6 +23,7 @@ func init() {
 		os.Exit(-1)
 	}
 }
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -37,8 +38,9 @@ func main() {
 		cancel()
 	}()
 
+	groupID := "scanner_group"
 	// 创建消费者组
-	cg, err := kafka.NewConsumerGroup([]string{cfg.KafkaHost}, "1", cfg.InTopic, cfg.ProcessedTopic, cfg)
+	cg, err := kafka.NewConsumerGroup([]string{cfg.KafkaHost}, groupID, cfg.InTopic, cfg.ProcessedTopic, cfg)
 	if err != nil {
 		fmt.Println("failed to new consumerGroup: ", err)
 		return
