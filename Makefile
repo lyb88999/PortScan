@@ -10,4 +10,4 @@ redis-monitor:
 clean:
 	rm -rf cmd/server/portscan-server && rm -rf portscan
 
-.PHONY: client server redis-monitor
+.PHONY: client server redis-monitor clean
