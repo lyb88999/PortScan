@@ -3,21 +3,24 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/lyb88999/PortScan/internal/config"
-	"github.com/lyb88999/PortScan/internal/kafka"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/lyb88999/PortScan/internal/config"
+	"github.com/lyb88999/PortScan/internal/kafka"
 )
 
 var cfg *config.Config
 
 func init() {
 	var err error
-	cfg, err = config.LoadConfig("../..")
+	// cfg, err = config.LoadConfig("../..")
+	cfg, err = config.LoadConfigFromExecutable()
 	if err != nil {
 		fmt.Println("failed to load config: ", err)
+		os.Exit(-1)
 	}
 }
 func main() {

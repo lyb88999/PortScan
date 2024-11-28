@@ -1,8 +1,8 @@
 client:
-	cd cmd/client && go build -o portscan .
+	cd cmd/client && go build -o portscan . && mv portscan ../..
 
 server:
-	cd cmd/server && go run main.go
+	cd cmd/server && go build -o portscan-server . && ./portscan-server
 
 redis-monitor:
 	redis-cli monitor

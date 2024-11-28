@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+
 	"github.com/IBM/sarama"
 	cfg "github.com/lyb88999/PortScan/internal/config"
 	"github.com/lyb88999/PortScan/internal/models"
 	rds "github.com/lyb88999/PortScan/internal/redis"
 	"github.com/lyb88999/PortScan/internal/scanner"
-	"strconv"
 )
 
 type ConsumerGroup struct {
@@ -34,6 +35,12 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 	rdb := rds.GetRedisClient(cg.cfg)
 	var ms = scanner.NewMasscanScanner(rdb)
 	p, err := NewSyncProducer([]string{cg.cfg.KafkaHost}, cg.processedTopic)
+	defer func() {
+		err = p.Close()
+		if err != nil {
+			fmt.Printf("failed to close sync producer: %s", err)
+		}
+	}()
 	if err != nil {
 		return fmt.Errorf("failed to new sync producer: %s", err)
 	}
@@ -56,6 +63,7 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			return fmt.Errorf("failed to use masscan to do port scan: %s", err)
 		}
 		fmt.Println("masscan task is done")
+		fmt.Println("Sending processed message...")
 		// 生产者向processedTopic发送处理好的消息
 		for _, result := range scanResult {
 			err = p.Send(result)
@@ -63,6 +71,7 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 				return err
 			}
 		}
+		fmt.Println("Send processed message done")
 	}
 	return nil
 }
