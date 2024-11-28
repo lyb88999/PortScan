@@ -66,7 +66,7 @@ func (m *masscanScanner) Scan(opts ScanOptions) ([]ScanResult, error) {
 	var results []ScanResult
 	var resultsMutex sync.Mutex
 
-	// 创建等待组
+	// 创建wg 对应两个协程分别来处理stdout和stderr
 	var wg sync.WaitGroup
 	wg.Add(2) // 一个用于stdout，一个用于stderr
 
@@ -108,7 +108,7 @@ func (m *masscanScanner) Scan(opts ScanOptions) ([]ScanResult, error) {
 				continue
 			}
 
-			// 转换为通用的 ScanResult 格式
+			// 转换为 ScanResult 格式
 			for _, port := range masscanResult.Ports {
 				result := ScanResult{
 					IP:       masscanResult.IP,

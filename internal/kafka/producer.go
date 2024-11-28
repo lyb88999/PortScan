@@ -37,3 +37,7 @@ func (p *Producer) Send(data interface{}) error {
 	_, _, err = p.producer.SendMessage(msg)
 	return err
 }
+
+func (p *Producer) Close() error {
+	return p.producer.Close()
+}

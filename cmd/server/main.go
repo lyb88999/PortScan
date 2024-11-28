@@ -1,14 +1,29 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"github.com/lyb88999/PortScan/internal/config"
+	"github.com/lyb88999/PortScan/internal/kafka"
 	"log"
 )
 
-func main() {
-	cfg, err := config.LoadConfig(".")
+var cfg *config.Config
+
+func init() {
+	var err error
+	cfg, err = config.LoadConfig(".")
 	if err != nil {
-		log.Fatalln("failed to load the config")
+		fmt.Println("failed to load config: ", err)
 	}
-	_ = cfg
+}
+func main() {
+	cg, err := kafka.NewConsumerGroup([]string{cfg.KafkaHost}, "1", cfg.InTopic)
+	if err != nil {
+		fmt.Println("failed to new consumerGroup: ", err)
+	}
+	err = cg.Consume(context.Background())
+	if err != nil {
+		log.Fatalln("failed to consume: ", err)
+	}
 }
