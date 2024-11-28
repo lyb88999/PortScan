@@ -5,7 +5,6 @@ import (
 	"github.com/lyb88999/PortScan/internal/config"
 	"github.com/lyb88999/PortScan/internal/kafka"
 	"github.com/lyb88999/PortScan/internal/models"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -18,11 +17,11 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			if ip == "" {
 				fmt.Println("ip不能为空")
-				os.Exit(-1)
+				return
 			}
 			if port == 0 {
 				fmt.Println("port不能为空")
-				os.Exit(-1)
+				return
 			}
 			// bandwidth不输入的话默认值为1000
 			fmt.Printf("ip: %s, port: %d, bandwidth: %d\n", ip, port, bandwidth)
@@ -31,7 +30,7 @@ var (
 			producer, err := kafka.NewSyncProducer([]string{cfg.KafkaHost}, cfg.InTopic)
 			if err != nil {
 				fmt.Println("failed to new producer: ", err)
-				os.Exit(-1)
+				return
 			}
 			defer func(producer *kafka.Producer) {
 				err := producer.Close()
@@ -43,6 +42,7 @@ var (
 			err = producer.Send(models.Data{IP: ip, Port: port, Bandwidth: bandwidth})
 			if err != nil {
 				fmt.Println("failed to produce msg to kafka: ", err)
+				return
 			}
 			fmt.Println("Sending the scanning task succeeded")
 		},
@@ -58,7 +58,6 @@ func init() {
 	masscanCmd.Flags().StringVar(&ip, "ip", "", "ip地址")
 	masscanCmd.Flags().IntVar(&port, "port", 0, "端口号")
 	masscanCmd.Flags().IntVar(&bandwidth, "bandwidth", 1000, "带宽")
-
 	var err error
 	cfg, err = config.LoadConfig("../..")
 	if err != nil {

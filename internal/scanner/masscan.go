@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/lyb88999/PortScan/internal/models"
 	"github.com/redis/go-redis/v9"
 	"io"
 	"log"
@@ -32,7 +33,7 @@ func (m *masscanScanner) getProgressKey(ip string, port int) string {
 	return fmt.Sprintf("scan_progress:%s:%s:%d", scannerName, ip, port)
 }
 
-func (m *masscanScanner) Scan(opts ScanOptions) ([]ScanResult, error) {
+func (m *masscanScanner) Scan(opts ScanOptions) ([]models.ScanResult, error) {
 	// 检查 masscan 是否已安装
 	if _, err := exec.LookPath("masscan"); err != nil {
 		return nil, fmt.Errorf("masscan not found in PATH: %v", err)
@@ -63,7 +64,7 @@ func (m *masscanScanner) Scan(opts ScanOptions) ([]ScanResult, error) {
 	}
 
 	// 存储结果的切片
-	var results []ScanResult
+	var results []models.ScanResult
 	var resultsMutex sync.Mutex
 
 	// 创建wg 对应两个协程分别来处理stdout和stderr
@@ -91,17 +92,7 @@ func (m *masscanScanner) Scan(opts ScanOptions) ([]ScanResult, error) {
 			}
 
 			// 解析 masscan 的 JSON 输出
-			var masscanResult struct {
-				IP        string `json:"ip"`
-				TimeStamp string `json:"timestamp"`
-				Ports     []struct {
-					Port   int    `json:"port"`
-					Proto  string `json:"proto"`
-					Status string `json:"status"`
-					Reason string `json:"reason"`
-					TTL    int    `json:"ttl"`
-				} `json:"ports"`
-			}
+			var masscanResult models.MasscanResult
 
 			if err := json.Unmarshal([]byte(line), &masscanResult); err != nil {
 				fmt.Printf("Error parsing JSON: %v, line: %s\n", err, line)
@@ -110,7 +101,7 @@ func (m *masscanScanner) Scan(opts ScanOptions) ([]ScanResult, error) {
 
 			// 转换为 ScanResult 格式
 			for _, port := range masscanResult.Ports {
-				result := ScanResult{
+				result := models.ScanResult{
 					IP:       masscanResult.IP,
 					Port:     port.Port,
 					Protocol: port.Proto,

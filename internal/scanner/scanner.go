@@ -1,5 +1,7 @@
 package scanner
 
+import "github.com/lyb88999/PortScan/internal/models"
+
 // ScanOptions 扫描参数
 type ScanOptions struct {
 	IP        string
@@ -15,6 +17,6 @@ type ScanResult struct {
 }
 
 type PortScanner interface {
-	Scan(opts ScanOptions) ([]ScanResult, error)
+	Scan(opts ScanOptions) ([]models.ScanResult, error)
 	GetProgress(ip string, port int) (float64, error)
 }
