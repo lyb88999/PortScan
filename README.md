@@ -27,6 +27,9 @@ make client
 
 # 编译服务端并运行
 make server
+
+# 使用Dockerfile构建镜像(macOS)
+make docker
 ```
 
 ## 配置文件
