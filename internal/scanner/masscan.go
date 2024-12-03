@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/lyb88999/PortScan/internal/models"
 	"github.com/redis/go-redis/v9"
@@ -31,10 +32,11 @@ func NewMasscanScanner(redisCli *redis.Client) PortScanner {
 }
 
 func (m *masscanScanner) getProgressKey(ip string, port int) string {
-	return fmt.Sprintf("scan_progress:%s:%s:%d", scannerName, ip, port)
+	taskID := fmt.Sprintf("%s_%d_%d", ip, port, time.Now().UnixNano())
+	return fmt.Sprintf("scan_progress:%s:%s", scannerName, taskID)
 }
 
-func (m *masscanScanner) Scan(opts ScanOptions) ([]models.ScanResult, error) {
+func (m *masscanScanner) Scan(opts models.ScanOptions) ([]models.ScanResult, error) {
 	// 检查 masscan 是否已安装
 	if _, err := exec.LookPath("masscan"); err != nil {
 		return nil, fmt.Errorf("masscan not found in PATH: %v", err)
@@ -63,6 +65,8 @@ func (m *masscanScanner) Scan(opts ScanOptions) ([]models.ScanResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stderr pipe: %v", err)
 	}
+	progressKey := m.getProgressKey(opts.IP, opts.Port)
+	defer m.redisCli.Expire(context.Background(), progressKey, 24*time.Hour)
 
 	// 存储结果的切片
 	var results []models.ScanResult
@@ -139,7 +143,8 @@ func (m *masscanScanner) Scan(opts ScanOptions) ([]models.ScanResult, error) {
 				if progress, err := strconv.ParseFloat(matches[1], 64); err == nil {
 					log.Println(progress)
 					// 将进度保存到 Redis
-					progressKey := m.getProgressKey(opts.IP, opts.Port)
+					// progressKey := m.getProgressKey(opts.IP, opts.Port)
+					// defer m.redisCli.Expire(context.Background(), progressKey, 24*time.Hour)
 					if err := m.redisCli.Set(context.Background(), progressKey, progress, 0).Err(); err != nil {
 						fmt.Printf("Error saving progress to Redis: %v\n", err)
 					}

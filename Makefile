@@ -10,4 +10,7 @@ redis-monitor:
 clean:
 	rm -rf cmd/server/portscan-server && rm -rf portscan
 
+docker:
+	docker build -t portscan:latest .
+
 .PHONY: client server redis-monitor clean

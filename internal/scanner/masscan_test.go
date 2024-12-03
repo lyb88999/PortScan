@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"github.com/lyb88999/PortScan/internal/config"
+	"github.com/lyb88999/PortScan/internal/models"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -19,7 +20,7 @@ func TestMasscanScanner(t *testing.T) {
 		DB:       cfg.RedisDB,
 	})
 	var ms = NewMasscanScanner(rdb)
-	scanOptions := ScanOptions{
+	scanOptions := models.ScanOptions{
 		IP:        "47.93.190.244/20",
 		Port:      8080,
 		BandWidth: "10000",

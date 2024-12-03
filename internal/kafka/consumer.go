@@ -55,7 +55,7 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal the data: %s", err)
 		}
-		scanOptions := scanner.ScanOptions{
+		scanOptions := models.ScanOptions{
 			IP:        data.IP,
 			Port:      data.Port,
 			BandWidth: strconv.Itoa(data.Bandwidth),

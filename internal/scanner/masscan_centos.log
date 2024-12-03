@@ -8,3 +8,6 @@ Scanning 16 hosts [1 port/host]
 {   ip: "47.93.190.241",   ports: [ {port: 8080, proto: "tcp", status: "open", reason: "syn-ack", ttl: 63} ] },
 {   ip: "47.93.190.249",   ports: [ {port: 8080, proto: "tcp", status: "open", reason: "syn-ack", ttl: 55} ] },
 {finished: 1}pps, 100.00% done, waiting 0-secs, found=4
+
+
+Error parsing JSON: invalid character 'i' looking for beginning of object key string, line: {   ip: "123.23.237.208",   ports: [ {port: 8080, proto: "tcp", status: "open", reason: "syn-ack", ttl: 45} ] }
