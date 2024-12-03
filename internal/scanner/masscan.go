@@ -70,7 +70,6 @@ func (m *masscanScanner) Scan(opts models.ScanOptions) ([]models.ScanResult, err
 
 	// 存储结果的切片
 	var results []models.ScanResult
-	var resultsMutex sync.Mutex
 
 	// 创建wg 对应两个协程分别来处理stdout和stderr
 	var wg sync.WaitGroup
@@ -112,9 +111,7 @@ func (m *masscanScanner) Scan(opts models.ScanOptions) ([]models.ScanResult, err
 					Protocol: port.Proto,
 				}
 
-				resultsMutex.Lock()
 				results = append(results, result)
-				resultsMutex.Unlock()
 			}
 		}
 
@@ -143,8 +140,6 @@ func (m *masscanScanner) Scan(opts models.ScanOptions) ([]models.ScanResult, err
 				if progress, err := strconv.ParseFloat(matches[1], 64); err == nil {
 					log.Println(progress)
 					// 将进度保存到 Redis
-					// progressKey := m.getProgressKey(opts.IP, opts.Port)
-					// defer m.redisCli.Expire(context.Background(), progressKey, 24*time.Hour)
 					if err := m.redisCli.Set(context.Background(), progressKey, progress, 0).Err(); err != nil {
 						fmt.Printf("Error saving progress to Redis: %v\n", err)
 					}
