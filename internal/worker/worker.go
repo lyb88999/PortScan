@@ -33,67 +33,21 @@ func NewWorker(ctx context.Context, redisCli *redis.Client, producer *kafka.Prod
 }
 
 func (w *Worker) Run() {
-	// 1. 从Kafka中读取出任务: 从cg.outputChan中读取任务 调用PortScanner的Scan方法
-	go func() {
-		err := w.cg.Consume(w.ctx)
-		if err != nil {
-			fmt.Println("failed to consume: ", err)
-		}
-	}()
+	eg, ctx := errgroup.WithContext(w.ctx)
 
-	for {
-		select {
-		case err := <-w.cg.ErrorChan:
-			fmt.Printf("Consumer error: %v\n", err)
-			return
-		case msgValue, ok := <-w.cg.OutputChan:
-			if !ok {
-				// channel 已关闭，退出循环
-				return
-			}
-			var scanOptions models.ScanOptions
-			err := json.Unmarshal(msgValue, &scanOptions)
-			if err != nil {
-				fmt.Println("failed to unmarshal scan options: ", err)
-				continue
-			}
-			resultChan, progressChan, err := w.ps.Scan(scanOptions)
-			if err != nil {
-				fmt.Println("failed to scan: ", err)
-				continue
-			}
+	// 消费者启动
+	eg.Go(func() error {
+		return w.cg.Consume(ctx)
+	})
 
-			// 2. 扫描然后将进度写入Redis: 读取Scan方法返回的progressChan，将里面的数据写入Redis
-			eg, ctx := errgroup.WithContext(w.ctx)
-			redisKey := fmt.Sprintf("%s:%d:%d", scanOptions.IP, scanOptions.Port, time.Now().UnixNano())
-			eg.Go(func() error {
-				for progress := range progressChan {
-					fmt.Println(progress)
-					err = w.redisCli.Set(ctx, redisKey, progress, time.Hour).Err()
-					if err != nil {
-						return fmt.Errorf("failed to save progress to redis: %w", err)
-					}
-				}
-				fmt.Println("port scan done")
-				return nil
-			})
+	// 处理消息启动
+	eg.Go(func() error {
+		return w.processMessages(ctx)
+	})
 
-			// 3. 将扫描结果发到Kafka: 读取Scan方法返回的resultChan，将里面的数据写入Kafka
-			eg.Go(func() error {
-				for result := range resultChan {
-					if err = w.producer.Send(result); err != nil {
-						return fmt.Errorf("failed to send task: %w", err)
-					}
-				}
-				fmt.Println("send port scan result done")
-				return nil
-			})
-			if err = eg.Wait(); err != nil {
-				fmt.Println("error in worker: ", err)
-			}
-		case <-w.ctx.Done():
-			return
-		}
+	// 等待所有goroutine完成
+	if err := eg.Wait(); err != nil {
+		fmt.Printf("Worker stopped with err: %v\n", err)
 	}
 }
 
@@ -117,4 +71,61 @@ func (w *Worker) Stop() error {
 	}
 
 	return nil
+}
+
+func (w *Worker) processMessages(ctx context.Context) error {
+	for {
+		select {
+		case err := <-w.cg.ErrorChan:
+			return fmt.Errorf("consumer error: %w", err)
+		// 从Kafka中读取出任务 从cg.outputChan中读取任务 调用handleMessage处理
+		case msgValue, ok := <-w.cg.OutputChan:
+			if !ok {
+				return nil
+			}
+			if err := w.handleMessage(ctx, msgValue); err != nil {
+				fmt.Printf("failed to handle message: %v", err)
+				continue
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+	}
+}
+
+func (w *Worker) handleMessage(ctx context.Context, msgValue []byte) error {
+	// 解析任务 调用portScanner的Scan方法 返回resultChan和progressChan
+	var scanOptions models.ScanOptions
+	if err := json.Unmarshal(msgValue, &scanOptions); err != nil {
+		return fmt.Errorf("failde to unmarshal scan options: %w", err)
+	}
+	resultChan, progressChan, err := w.ps.Scan(scanOptions)
+	if err != nil {
+		return fmt.Errorf("failed to scan: %w", err)
+	}
+	eg, ctx := errgroup.WithContext(ctx)
+	// 处理进度写入Redis
+	redisKey := fmt.Sprintf("%s:%d:%d", scanOptions.IP, scanOptions.Port, time.Now().UnixNano())
+	eg.Go(func() error {
+		for progress := range progressChan {
+			if err := w.redisCli.Set(ctx, redisKey, progress, time.Hour).Err(); err != nil {
+				return fmt.Errorf("failed to save progress to redis: %w", err)
+			}
+		}
+		fmt.Println("port scan done")
+		return nil
+	})
+
+	// 处理解析结果发送到Kafka
+	eg.Go(func() error {
+		for result := range resultChan {
+			if err := w.producer.Send(result); err != nil {
+				return fmt.Errorf("failed to send result: %w", err)
+			}
+		}
+		fmt.Println("send port scan result done")
+		return nil
+	})
+	return eg.Wait()
 }
