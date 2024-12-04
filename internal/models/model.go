@@ -1,17 +1,10 @@
 package models
 
-// Data 客户端输入参数
-type Data struct {
-	IP        string `json:"ip"`
-	Port      int    `json:"port"`
-	Bandwidth int    `json:"bandwidth"`
-}
-
 // ScanOptions 扫描参数
 type ScanOptions struct {
-	IP        string
-	Port      int
-	BandWidth string
+	IP        string `json:"ip"`
+	Port      int    `json:"port"`
+	BandWidth int    `json:"bandwidth"`
 }
 
 // ScanResult 返回结果
@@ -32,4 +25,20 @@ type MasscanResult struct {
 		Reason string `json:"reason"`
 		TTL    int    `json:"ttl"`
 	} `json:"ports"`
+}
+
+type Channels struct {
+	OutputChan   chan []byte
+	ErrorChan    chan error
+	ResultChan   chan ScanResult
+	ProgressChan chan float64
+}
+
+func NewChannels(buffersize int) *Channels {
+	return &Channels{
+		ResultChan:   make(chan ScanResult, buffersize),
+		ProgressChan: make(chan float64, buffersize),
+		OutputChan:   make(chan []byte, buffersize),
+		ErrorChan:    make(chan error, buffersize),
+	}
 }

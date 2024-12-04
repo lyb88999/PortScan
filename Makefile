@@ -8,9 +8,10 @@ redis-monitor:
 	redis-cli monitor
 
 clean:
-	rm -rf cmd/server/portscan-server && rm -rf portscan
+	rm -rf cmd/server/portscan-server && rm -rf portscan && rm -rf cmd/server/paused.conf
 
 docker:
 	docker build -t portscan:latest .
+
 
 .PHONY: client server redis-monitor clean

@@ -17,7 +17,7 @@ func NewSyncProducer(brokers []string, topic string) (*Producer, error) {
 	config.Producer.Return.Successes = true
 	config.Producer.Return.Errors = true
 	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Partitioner = sarama.NewRandomPartitioner
+	// config.Producer.Partitioner = sarama.NewRandomPartitioner
 	producer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,6 @@ func (p *Producer) Send(data interface{}) error {
 		Topic: p.topic,
 		Value: sarama.StringEncoder(jata),
 	}
-
 	_, _, err = p.producer.SendMessage(msg)
 	return err
 }

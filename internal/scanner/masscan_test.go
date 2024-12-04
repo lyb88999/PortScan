@@ -1,31 +1,40 @@
 package scanner
 
 import (
-	"github.com/lyb88999/PortScan/internal/config"
 	"github.com/lyb88999/PortScan/internal/models"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"sync"
 	"testing"
 )
 
 func TestMasscanScanner(t *testing.T) {
 	// 加载配置文件
-	cfg, err := config.LoadConfig("../..")
-	require.NoError(t, err)
+	// cfg, err := config.LoadConfig("../..")
+	// require.NoError(t, err)
 	// 创建redis client
 	// var ctx = context.Background()
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisAddr,
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-	})
-	var ms = NewMasscanScanner(rdb)
+	var ms = NewMasscanScanner()
 	scanOptions := models.ScanOptions{
-		IP:        "47.93.190.244/20",
+		IP:        "47.93.190.244/24",
 		Port:      8080,
-		BandWidth: "10000",
+		BandWidth: 10,
 	}
-	scanResult, err := ms.Scan(scanOptions)
+	resultChan, progressChan, err := ms.Scan(scanOptions)
 	require.NoError(t, err)
-	t.Log(scanResult)
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for result := range resultChan {
+			t.Logf("result: %+v", result)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for result := range progressChan {
+			t.Logf("progress: %+v", result)
+		}
+	}()
+	wg.Wait()
+
 }

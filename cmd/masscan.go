@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// masscanCmd represents the masscan command
 var (
 	masscanCmd = &cobra.Command{
 		Use:   "masscan",
@@ -41,7 +40,7 @@ var (
 				}
 				fmt.Println("producer closed")
 			}(producer)
-			err = producer.Send(models.Data{IP: ip, Port: port, Bandwidth: bandwidth})
+			err = producer.Send(models.ScanOptions{IP: ip, Port: port, BandWidth: bandwidth})
 			if err != nil {
 				fmt.Println("failed to produce msg to kafka: ", err)
 				return
@@ -67,14 +66,4 @@ func init() {
 		fmt.Println("failed to load config: ", err)
 		os.Exit(-1)
 	}
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// masscanCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// masscanCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

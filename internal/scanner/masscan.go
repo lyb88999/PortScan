@@ -2,53 +2,38 @@ package scanner
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os/exec"
 	"regexp"
 	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/lyb88999/PortScan/internal/models"
-	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/errgroup"
 )
 
-const scannerName = "masscan"
-
 type masscanScanner struct {
-	redisCli *redis.Client
 }
 
-func NewMasscanScanner(redisCli *redis.Client) PortScanner {
-	return &masscanScanner{
-		redisCli: redisCli,
-	}
+func NewMasscanScanner() PortScanner {
+	return &masscanScanner{}
 }
 
-func (m *masscanScanner) getProgressKey(ip string, port int) string {
-	taskID := fmt.Sprintf("%s_%d_%d", ip, port, time.Now().UnixNano())
-	return fmt.Sprintf("scan_progress:%s:%s", scannerName, taskID)
-}
-
-func (m *masscanScanner) Scan(opts models.ScanOptions) ([]models.ScanResult, error) {
+func (m *masscanScanner) Scan(opts models.ScanOptions) (chan models.ScanResult, chan float64, error) {
 	// 检查 masscan 是否已安装
 	if _, err := exec.LookPath("masscan"); err != nil {
-		return nil, fmt.Errorf("masscan not found in PATH: %v", err)
+		return nil, nil, fmt.Errorf("masscan not found in PATH: %v", err)
 	}
 
 	// 构建命令行参数
 	args := []string{
 		opts.IP,
 		"-p", fmt.Sprintf("%d", opts.Port),
-		"--rate", opts.BandWidth,
+		"--rate", strconv.Itoa(opts.BandWidth),
 		"--wait", "0", // 扫描完成后立即退出
-		"-oJ", "-", // 输出JSON格式到标准输出
+		// "-oJ", "-", // 输出JSON格式到标准输出
 	}
 
 	// 创建命令
@@ -57,160 +42,144 @@ func (m *masscanScanner) Scan(opts models.ScanOptions) ([]models.ScanResult, err
 	// 获取标准输出管道
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe: %v", err)
+		return nil, nil, fmt.Errorf("failed to get stdout pipe: %v", err)
 	}
 
 	// 获取标准错误管道
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get stderr pipe: %v", err)
+		return nil, nil, fmt.Errorf("failed to get stderr pipe: %v", err)
 	}
-	progressKey := m.getProgressKey(opts.IP, opts.Port)
-	defer m.redisCli.Expire(context.Background(), progressKey, 24*time.Hour)
 
-	// 存储结果的切片
-	var results []models.ScanResult
+	resultChan := make(chan models.ScanResult, 1000)
+	progressChan := make(chan float64, 1000)
 
-	// 创建wg 对应两个协程分别来处理stdout和stderr
-	var wg sync.WaitGroup
-	wg.Add(2) // 一个用于stdout，一个用于stderr
+	eg := &errgroup.Group{}
 
 	// 处理标准输出
+	eg.Go(func() error {
+		defer close(resultChan)
+		return m.processDefaultOutput(stdout, resultChan)
+	})
+
+	// 处理标准错误（进度信息）
+	eg.Go(func() error {
+		defer close(progressChan)
+		return m.processProgressOutput(stderr, progressChan)
+	})
+
+	// 启动命令
+	if err := cmd.Start(); err != nil {
+		return nil, nil, fmt.Errorf("failed to start masscan: %v", err)
+	}
+
+	// 在后台等待命令完成并处理可能的错误
 	go func() {
-		defer wg.Done()
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			// log.Println(line)
-			// 跳过不是 JSON 开头的行（无关行）
-			if !strings.HasPrefix(line, "{") {
+		if err := eg.Wait(); err != nil {
+			log.Printf("Error in goroutines: %v", err)
+		}
+		if err := cmd.Wait(); err != nil {
+			log.Printf("Masscan command failed: %v", err)
+		}
+	}()
+
+	return resultChan, progressChan, nil
+}
+
+// 处理 JSON 输出格式
+func (m *masscanScanner) processJSONOutput(stdout io.Reader, resultChan chan<- models.ScanResult) error {
+	scanner := bufio.NewScanner(stdout)
+	outputRegex := regexp.MustCompile(`\{.*?\} ] }`)
+
+	for scanner.Scan() {
+		// 解析 masscan 的 JSON 输出
+		var masscanResult models.MasscanResult
+		if matches := outputRegex.FindStringSubmatch(scanner.Text()); len(matches) >= 1 {
+			if err := json.Unmarshal([]byte(matches[0]), &masscanResult); err != nil {
+				log.Printf("Error parsing JSON: %v, line: %s\n", err, scanner.Text())
 				continue
 			}
-			// 跳过空行和中括号
-			if line == "" || line == "[" || line == "]" {
-				continue
-			}
-			// 如果行末尾有逗号，去除它
-			if strings.HasSuffix(line, ",") {
-				line = line[:len(line)-1]
-			}
 
-			// 解析 masscan 的 JSON 输出
-			var masscanResult models.MasscanResult
-
-			if err := json.Unmarshal([]byte(line), &masscanResult); err != nil {
-				fmt.Printf("Error parsing JSON: %v, line: %s\n", err, line)
-				continue
-			}
-
-			// 转换为 ScanResult 格式
+			// 转换并发送结果
 			for _, port := range masscanResult.Ports {
 				result := models.ScanResult{
 					IP:       masscanResult.IP,
 					Port:     port.Port,
 					Protocol: port.Proto,
 				}
-
-				results = append(results, result)
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			fmt.Printf("Error reading stdout: %v\n", err)
-		}
-	}()
-
-	// 处理标准错误（进度信息）
-	go func() {
-		defer wg.Done()
-		progressRegex := regexp.MustCompile(`rate:\s+[\d.]+-kpps,\s+([\d.]+)% done`)
-		buffer := make([]byte, 1024)
-
-		for {
-			n, err := stderr.Read(buffer)
-			if err != nil {
-				if err != io.EOF {
-					log.Printf("Error reading stderr: %v", err)
-				}
-				return
-			}
-
-			line := string(buffer[:n])
-			if matches := progressRegex.FindStringSubmatch(line); len(matches) > 1 {
-				if progress, err := strconv.ParseFloat(matches[1], 64); err == nil {
-					log.Println(progress)
-					// 将进度保存到 Redis
-					if err := m.redisCli.Set(context.Background(), progressKey, progress, 0).Err(); err != nil {
-						fmt.Printf("Error saving progress to Redis: %v\n", err)
-					}
+				select {
+				case resultChan <- result:
+				default:
+					log.Printf("Warning: result channel is full, dropping result for IP: %s, Port: %d",
+						result.IP, result.Port)
 				}
 			}
 		}
-	}()
-	// 启动命令
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start masscan: %v", err)
 	}
 
-	// 等待所有goroutine完成
-	wg.Wait()
-
-	// 等待命令完成
-	if err := cmd.Wait(); err != nil {
-		return nil, fmt.Errorf("masscan command failed: %v", err)
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read stdout: %s", err)
 	}
-
-	return results, nil
+	return nil
 }
 
-//	// 处理标准错误（进度信息）
-//	go func() {
-//		defer wg.Done()
-//		scanner := bufio.NewScanner(stderr)
-//		progressRegex := regexp.MustCompile(`\s*(\d+\.\d+)%\s*done`)
-//
-//		for scanner.Scan() {
-//			line := scanner.Text()
-//			if matches := progressRegex.FindStringSubmatch(line); len(matches) > 1 {
-//				if progress, err := strconv.ParseFloat(matches[1], 64); err == nil {
-//					// 将进度保存到 Redis
-//					progressKey := m.getProgressKey(opts.IP, opts.Port)
-//					if err := m.redisCli.Set(context.Background(), progressKey, progress, 0).Err(); err != nil {
-//						fmt.Printf("Error saving progress to Redis: %v\n", err)
-//					}
-//				}
-//			}
-//		}
-//
-//		if err := scanner.Err(); err != nil {
-//			fmt.Printf("Error reading stderr: %v\n", err)
-//		}
-//	}()
-//
-//	// 启动命令
-//	if err := cmd.Start(); err != nil {
-//		return nil, fmt.Errorf("failed to start masscan: %v", err)
-//	}
-//
-//	// 等待所有goroutine完成
-//	wg.Wait()
-//
-//	// 等待命令完成
-//	if err := cmd.Wait(); err != nil {
-//		return nil, fmt.Errorf("masscan command failed: %v", err)
-//	}
-//
-//	return results, nil
-//}
+// 处理默认输出格式
+func (m *masscanScanner) processDefaultOutput(stdout io.Reader, resultChan chan<- models.ScanResult) error {
+	scanner := bufio.NewScanner(stdout)
+	outputRegex := regexp.MustCompile(`Discovered open port (\d+)/(\w+) on ([0-9.]+)`)
 
-func (m *masscanScanner) GetProgress(ip string, port int) (float64, error) {
-	progressKey := m.getProgressKey(ip, port)
-	progress, err := m.redisCli.Get(context.Background(), progressKey).Float64()
-	if errors.Is(err, redis.Nil) {
-		return 0, nil
+	for scanner.Scan() {
+		if matches := outputRegex.FindStringSubmatch(scanner.Text()); len(matches) >= 4 {
+			port, err := strconv.Atoi(matches[1])
+			if err != nil {
+				log.Printf("Error parsing port: %v\n", err)
+				continue
+			}
+
+			result := models.ScanResult{
+				IP:       matches[3],
+				Port:     port,
+				Protocol: matches[2],
+			}
+
+			select {
+			case resultChan <- result:
+			default:
+				log.Printf("Warning: result channel is full, dropping result for IP: %s, Port: %d",
+					result.IP, result.Port)
+			}
+		}
 	}
-	if err != nil {
-		return 0, fmt.Errorf("failed to get progress from Redis: %v", err)
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read stdout: %s", err)
 	}
-	return progress, nil
+	return nil
+}
+
+// 处理进度输出
+func (m *masscanScanner) processProgressOutput(stderr io.Reader, progressChan chan<- float64) error {
+	progressRegex := regexp.MustCompile(`rate:\s+[\d.]+-kpps,\s+([\d.]+)% done`)
+	buffer := make([]byte, 1024)
+	for {
+		n, err := stderr.Read(buffer)
+		if err != nil {
+			if err != io.EOF {
+				return fmt.Errorf("error reading stderr: %v", err)
+			}
+			return nil
+		}
+
+		line := string(buffer[:n])
+		if matches := progressRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if progress, err := strconv.ParseFloat(matches[1], 64); err == nil {
+				select {
+				case progressChan <- progress:
+				default:
+					// 如果channel已满，记录警告但继续处理
+					log.Printf("Warning: progress channel is full, dropping progress: %f ", progress)
+				}
+			}
+		}
+	}
 }

@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o portscan-server cmd/server/main.go
 
 FROM alpine:latest
 
-RUN apk add --no-cache masscan
+RUN apk add --no-cache masscan bash
 
 COPY --from=builder /app/portscan-server /app/portscan-server
 
@@ -19,8 +19,8 @@ COPY ./app.env /app/app.env
 
 COPY ./wait-for.sh /app/wait-for.sh
 
+RUN chmod +x app/wait-for.sh
+
 WORKDIR /app
 
-RUN chmod +x /app/wait-for.sh
-
-ENTRYPOINT ["./portscan-server"]
+ENTRYPOINT ["/bin/bash"]
