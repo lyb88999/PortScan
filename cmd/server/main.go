@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/lyb88999/PortScan/internal/config"
 	"github.com/lyb88999/PortScan/internal/kafka"
@@ -27,6 +29,15 @@ func init() {
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		fmt.Println("Received shutdown signal")
+		cancel()
+	}()
 
 	// 传入Redis
 	redisCli := redis.GetRedisClient(cfg)

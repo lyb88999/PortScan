@@ -35,7 +35,6 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			fmt.Printf("[consumer] topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 			session.MarkMessage(msg, "")
 		case <-session.Context().Done():
-			session.MarkMessage(msg, "")
 			return nil
 		}
 	}
@@ -71,12 +70,11 @@ func (cg *ConsumerGroup) Consume(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		case <-cg.done:
 			return nil
 		default:
-			err := cg.consumerGroup.Consume(ctx, []string{cg.rawTopic}, cg)
-			if err != nil {
+			if err := cg.consumerGroup.Consume(ctx, []string{cg.rawTopic}, cg); err != nil {
 				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
 					return nil
 				}
