@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
 
 	"github.com/IBM/sarama"
 	cfg "github.com/lyb88999/PortScan/internal/config"
@@ -19,12 +20,12 @@ type ConsumerGroup struct {
 }
 
 func (cg *ConsumerGroup) Setup(session sarama.ConsumerGroupSession) error {
-	fmt.Println("Port scan service is started")
+	log.Info().Msg("Port scan service is started")
 	return nil
 }
 
 func (cg *ConsumerGroup) Cleanup(session sarama.ConsumerGroupSession) error {
-	fmt.Println("Port scan service is down")
+	log.Info().Msg("Port scan service is down")
 	return nil
 }
 
@@ -32,7 +33,7 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 	for msg := range claim.Messages() {
 		select {
 		case cg.OutputChan <- msg.Value:
-			fmt.Printf("[consumer] topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
+			log.Info().Msgf("[consumer] topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 			session.MarkMessage(msg, "")
 		case <-session.Context().Done():
 			return nil
@@ -78,7 +79,7 @@ func (cg *ConsumerGroup) Consume(ctx context.Context) error {
 				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
 					return nil
 				}
-				fmt.Printf("Error from consumer: %v, will retry...", err)
+				log.Error().Err(err).Msg("Error from consumer, will retry...")
 				continue
 			}
 		}

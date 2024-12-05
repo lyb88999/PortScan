@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"time"
 
 	"github.com/lyb88999/PortScan/internal/models"
@@ -47,7 +48,7 @@ func (w *Worker) Run() {
 
 	// 等待所有goroutine完成
 	if err := eg.Wait(); err != nil {
-		fmt.Printf("Worker stopped with err: %v\n", err)
+		log.Error().Err(err).Msg("Worker stopped with err")
 	}
 }
 
@@ -84,7 +85,7 @@ func (w *Worker) processMessages(ctx context.Context) error {
 				return nil
 			}
 			if err := w.handleMessage(ctx, msgValue); err != nil {
-				fmt.Printf("failed to handle message: %v", err)
+				log.Error().Err(err).Msg("failed to handle message")
 				continue
 			}
 		case <-ctx.Done():
@@ -109,11 +110,12 @@ func (w *Worker) handleMessage(ctx context.Context, msgValue []byte) error {
 	redisKey := fmt.Sprintf("%s:%d:%d", scanOptions.IP, scanOptions.Port, time.Now().UnixNano())
 	eg.Go(func() error {
 		for progress := range progressChan {
+			log.Info().Float64("progress", progress).Msg("port scan progress")
 			if err := w.redisCli.Set(ctx, redisKey, progress, time.Hour).Err(); err != nil {
 				return fmt.Errorf("failed to save progress to redis: %w", err)
 			}
 		}
-		fmt.Println("port scan done")
+		log.Info().Msg("save progress to redis done")
 		return nil
 	})
 
@@ -124,7 +126,7 @@ func (w *Worker) handleMessage(ctx context.Context, msgValue []byte) error {
 				return fmt.Errorf("failed to send result: %w", err)
 			}
 		}
-		fmt.Println("send port scan result done")
+		log.Info().Msg("send port scan result")
 		return nil
 	})
 	return eg.Wait()
