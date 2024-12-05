@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
-	"log"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -76,10 +76,10 @@ func (m *masscanScanner) Scan(opts models.ScanOptions) (chan models.ScanResult, 
 	// 在后台等待命令完成并处理可能的错误
 	go func() {
 		if err := eg.Wait(); err != nil {
-			log.Printf("Error in goroutines: %v", err)
+			log.Error().Err(err).Msg("Error in goroutines")
 		}
 		if err := cmd.Wait(); err != nil {
-			log.Printf("Masscan command failed: %v", err)
+			log.Error().Err(err).Msg("Masscan command failed")
 		}
 	}()
 
@@ -96,7 +96,7 @@ func (m *masscanScanner) processJSONOutput(stdout io.Reader, resultChan chan<- m
 		var masscanResult models.MasscanResult
 		if matches := outputRegex.FindStringSubmatch(scanner.Text()); len(matches) >= 1 {
 			if err := json.Unmarshal([]byte(matches[0]), &masscanResult); err != nil {
-				log.Printf("Error parsing JSON: %v, line: %s\n", err, scanner.Text())
+				log.Error().Err(err).Msgf("Error parsing JSON: %v, line: %s\n", err, scanner.Text())
 				continue
 			}
 
@@ -110,8 +110,7 @@ func (m *masscanScanner) processJSONOutput(stdout io.Reader, resultChan chan<- m
 				select {
 				case resultChan <- result:
 				default:
-					log.Printf("Warning: result channel is full, dropping result for IP: %s, Port: %d",
-						result.IP, result.Port)
+					log.Error().Msgf("Warning: result channel is full, dropping result for IP: %s, Port: %d", result.IP, result.Port)
 				}
 			}
 		}
@@ -132,7 +131,7 @@ func (m *masscanScanner) processDefaultOutput(stdout io.Reader, resultChan chan<
 		if matches := outputRegex.FindStringSubmatch(scanner.Text()); len(matches) >= 4 {
 			port, err := strconv.Atoi(matches[1])
 			if err != nil {
-				log.Printf("Error parsing port: %v\n", err)
+				log.Error().Err(err).Msgf("Error parsing port: %v\n", err)
 				continue
 			}
 
@@ -145,8 +144,7 @@ func (m *masscanScanner) processDefaultOutput(stdout io.Reader, resultChan chan<
 			select {
 			case resultChan <- result:
 			default:
-				log.Printf("Warning: result channel is full, dropping result for IP: %s, Port: %d",
-					result.IP, result.Port)
+				log.Error().Msgf("Warning: result channel is full, dropping result for IP: %s, Port: %d", result.IP, result.Port)
 			}
 		}
 	}
@@ -177,7 +175,7 @@ func (m *masscanScanner) processProgressOutput(stderr io.Reader, progressChan ch
 				case progressChan <- progress:
 				default:
 					// 如果channel已满，记录警告但继续处理
-					log.Printf("Warning: progress channel is full, dropping progress: %f ", progress)
+					log.Error().Msgf("Warning: progress channel is full, dropping progress: %f ", progress)
 				}
 			}
 		}

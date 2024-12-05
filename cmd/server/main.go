@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,11 +18,14 @@ import (
 var cfg *config.Config
 
 func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
 	var err error
 	// cfg, err = config.LoadConfig(".")
 	cfg, err = config.LoadConfigFromExecutable()
 	if err != nil {
-		fmt.Println("failed to load config: ", err)
+		log.Error().Err(err).Msgf("failed to load config from %s", err)
+
 		os.Exit(-1)
 	}
 }
@@ -35,7 +39,7 @@ func main() {
 
 	go func() {
 		<-sigChan
-		fmt.Println("Received shutdown signal")
+		log.Info().Msg("Received shutdown signal")
 		cancel()
 	}()
 
@@ -45,14 +49,14 @@ func main() {
 	// 传入Kafka（生产者、消费者）
 	producer, err := kafka.NewSyncProducer([]string{cfg.KafkaHost}, cfg.ProcessedTopic)
 	if err != nil {
-		fmt.Println("failed to new sync producer: ", err)
+		log.Error().Err(err).Msgf("failed to new sync producer from %s", err)
 		return
 	}
 
 	groupID := "scanner_group"
 	cg, err := kafka.NewConsumerGroup([]string{cfg.KafkaHost}, groupID, cfg.InTopic, cfg)
 	if err != nil {
-		fmt.Println("failed to new consumerGroup: ", err)
+		log.Error().Err(err).Msgf("failed to new consumerGroup from %s", err)
 		return
 	}
 	// 传入PortScanner
@@ -64,7 +68,7 @@ func main() {
 	// 延迟调用worker的Stop方法
 	defer func() {
 		if err := w.Stop(); err != nil {
-			fmt.Println("failed to stop worker: ", err)
+			log.Error().Err(err).Msgf("failed to stop worker from %s", err)
 		}
 	}()
 
